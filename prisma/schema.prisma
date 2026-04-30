@@ -1,0 +1,296 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── USUARIOS DEL SISTEMA ─────────────────────────────────────────────────────
+
+model Usuario {
+  id        String   @id @default(cuid())
+  nombre    String
+  email     String   @unique
+  password  String
+  rol       Rol      @default(OPERADOR_FREIGHT)
+  activo    Boolean  @default(true)
+  creadoEn  DateTime @default(now())
+
+  operacionesCreadas Operacion[]
+  logs               LogAuditoria[]
+
+  @@map("usuarios")
+}
+
+enum Rol {
+  ADMIN
+  OPERADOR_FREIGHT
+  OPERADOR_ZF
+  GERENTE
+}
+
+// ─── CLIENTES (CRM) ───────────────────────────────────────────────────────────
+
+model Cliente {
+  id                String   @id @default(cuid())
+  razonSocial       String
+  nit               String?  @unique
+  contactoPrincipal String?
+  email             String?
+  telefono          String?
+  ciudad            String?
+  activo            Boolean  @default(true)
+  creadoEn          DateTime @default(now())
+  actualizadoEn     DateTime @updatedAt
+
+  operaciones  Operacion[]
+  cotizaciones CotizacionNaviera[]
+
+  @@map("clientes")
+}
+
+// ─── ZONAS FRANCAS ────────────────────────────────────────────────────────────
+
+model ZonaFranca {
+  id                   String   @id @default(cuid())
+  nombre               String
+  ciudad               String
+  distanciaAlPuertoKm  Float
+  capacidadTotalM2     Float
+  ocupacionActualM2    Float    @default(0)
+  precioPorDiaUSD      Float
+  activa               Boolean  @default(true)
+  ultimaSincronizacion DateTime @default(now())
+  creadoEn             DateTime @default(now())
+
+  cargas      CargaEnZF[]
+  operaciones Operacion[]
+
+  @@map("zonas_francas")
+}
+
+model CargaEnZF {
+  id                  String     @id @default(cuid())
+  zonaFrancaId        String
+  operacionId         String?
+  descripcion         String
+  m2Ocupados          Float
+  fechaEntrada        DateTime
+  fechaSalidaEstimada DateTime?
+  esClientePropio     Boolean    @default(true)
+  creadoEn            DateTime   @default(now())
+
+  zonaFranca ZonaFranca @relation(fields: [zonaFrancaId], references: [id])
+  operacion  Operacion? @relation(fields: [operacionId], references: [id])
+
+  @@map("cargas_en_zf")
+}
+
+// ─── OPERACIONES DE FREIGHT ───────────────────────────────────────────────────
+
+model Operacion {
+  id               String          @id @default(cuid())
+  codigo           String          @unique
+  clienteId        String
+  tipo             TipoOperacion
+  paisOrigen       String
+  paisDestino      String?
+  puertoEntrada    PuertoEntrada
+  tipoContenedor   TipoContenedor
+  descripcionCarga String
+  pesoTon          Float
+  destinoFinal     String
+  etaPuerto        DateTime
+  numeroBlAwb      String?
+  navieraActual    String?
+  valorFobUSD      Float?
+  notasInternas    String?
+  estado           EstadoOperacion @default(BORRADOR)
+  zonaFrancaId     String?
+  creadoPor        String
+  creadoEn         DateTime        @default(now())
+  actualizadoEn    DateTime        @updatedAt
+
+  cliente    Cliente             @relation(fields: [clienteId], references: [id])
+  zonaFranca ZonaFranca?         @relation(fields: [zonaFrancaId], references: [id])
+  creador    Usuario             @relation(fields: [creadoPor], references: [id])
+  cargas     CargaEnZF[]
+  transporte TransporteAsignado?
+  cotizaciones CotizacionNaviera[]
+  sugerencias  Sugerencia[]
+  documentos   DocumentoEmbarque[]
+  logs         LogAuditoria[]
+
+  @@map("operaciones")
+}
+
+enum TipoOperacion {
+  IMPORTACION
+  EXPORTACION
+  TRANSITO
+}
+
+enum PuertoEntrada {
+  CTG
+  SMR
+  BOG
+  OTRO
+}
+
+enum TipoContenedor {
+  CONT_20
+  CONT_40
+  CONT_40HC
+  LCL
+  AEREO
+  OTRO
+}
+
+enum EstadoOperacion {
+  BORRADOR
+  CONFIRMADA
+  EN_TRANSITO_ORIGEN
+  EN_PUERTO
+  EN_ZONA_FRANCA
+  EN_TRANSITO_DESTINO
+  ENTREGADA
+  CERRADA
+}
+
+// ─── TRANSPORTE ───────────────────────────────────────────────────────────────
+
+model TransporteAsignado {
+  id             String    @id @default(cuid())
+  operacionId    String    @unique
+  carrier        String
+  esAldia        Boolean   @default(true)
+  origen         String
+  destino        String
+  fechaDespacho  DateTime?
+  precioOfertado Float?
+  moneda         String    @default("COP")
+  estado         String    @default("PENDIENTE")
+  trackingId     String?
+  creadoEn       DateTime  @default(now())
+
+  operacion Operacion @relation(fields: [operacionId], references: [id])
+
+  @@map("transportes_asignados")
+}
+
+// ─── COTIZACIONES DE NAVIERAS ─────────────────────────────────────────────────
+
+model CotizacionNaviera {
+  id               String    @id @default(cuid())
+  numeroCotizacion String?
+  operacionId      String?
+  clienteId        String?
+  naviera          String
+  puertoOrigen     String
+  puertoDestino    String
+  tipoContenedor   String
+  tarifaUSD        Float?
+  tiempoTransitoD  Int?
+  validaHasta      DateTime?
+  disponibilidad   String?
+  fuente           String    @default("api")
+  seleccionada     Boolean   @default(false)
+  rawResponse      Json?
+  error            String?
+  creadoEn         DateTime  @default(now())
+
+  operacion Operacion? @relation(fields: [operacionId], references: [id])
+  cliente   Cliente?   @relation(fields: [clienteId], references: [id])
+
+  @@map("cotizaciones_navieras")
+}
+
+// ─── SUGERENCIAS (MOTOR) ──────────────────────────────────────────────────────
+
+model Sugerencia {
+  id          String   @id @default(cuid())
+  operacionId String
+  tipo        String
+  titulo      String
+  descripcion String
+  valorUSD    Float?
+  aceptada    Boolean?
+  creadoEn    DateTime @default(now())
+
+  operacion Operacion @relation(fields: [operacionId], references: [id])
+
+  @@map("sugerencias")
+}
+
+// ─── PROPUESTAS COMERCIALES ───────────────────────────────────────────────────
+
+model PropuestaComercial {
+  id               String    @id @default(cuid())
+  operacionId      String?
+  clienteNombre    String
+  navieraNombre    String?
+  navieraTarifaUSD Float?
+  zonaFrancaNombre String?
+  zonaFrancaCosto  Float?
+  transporteCosto  Float?
+  transporteMoneda String?
+  trmDelDia        Float?
+  totalUSD         Float?
+  totalCOP         Float?
+  pdfUrl           String?
+  validaHasta      DateTime?
+  creadoEn         DateTime  @default(now())
+
+  @@map("propuestas_comerciales")
+}
+
+// ─── DOCUMENTOS DE EMBARQUE ───────────────────────────────────────────────────
+
+enum TipoDocumento {
+  BL
+  AWB
+  PACKING_LIST
+  FACTURA_COMERCIAL
+  CERTIFICADO_ORIGEN
+  SEGURO
+  DTA
+  PERMISO_IMPORTACION
+  INSPECCION_FISICA
+  CARTA_PORTE
+  OTRO
+}
+
+model DocumentoEmbarque {
+  id             String        @id @default(cuid())
+  operacionId    String
+  tipo           TipoDocumento
+  nombre         String
+  numero         String?
+  fechaEmision   DateTime?
+  observaciones  String?
+  creadoEn       DateTime      @default(now())
+  actualizadoEn  DateTime      @updatedAt
+
+  operacion Operacion @relation(fields: [operacionId], references: [id])
+
+  @@map("documentos_embarque")
+}
+
+// ─── AUDITORÍA ────────────────────────────────────────────────────────────────
+
+model LogAuditoria {
+  id          String   @id @default(cuid())
+  usuarioId   String?
+  operacionId String?
+  accion      String
+  detalle     Json?
+  ip          String?
+  creadoEn    DateTime @default(now())
+
+  usuario   Usuario?   @relation(fields: [usuarioId], references: [id])
+  operacion Operacion? @relation(fields: [operacionId], references: [id])
+
+  @@map("logs_auditoria")
+}

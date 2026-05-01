@@ -10,6 +10,7 @@ import { PropuestaModule } from './propuesta/propuesta.module';
 import { CotizadorPublicoModule } from './cotizador-publico/cotizador-publico.module';
 import { DocumentosModule } from './documentos/documentos.module';
 import { LeadsModule } from './leads/leads.module';
+import { PortalModule } from './portal/portal.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { LeadsModule } from './leads/leads.module';
     CotizadorPublicoModule,
     DocumentosModule,
     LeadsModule,
+    PortalModule,
   ],
 })
 export class AppModule {}
